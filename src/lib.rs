@@ -4,7 +4,11 @@ use std::time::{Duration, Instant};
 use winit::{
     event::{self, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
+    window::Window,
 };
+
+pub use wgpu;
+pub use winit;
 
 pub trait Playground: 'static + Sized {
     fn optional_features() -> wgpu::Features {
@@ -63,21 +67,11 @@ struct Setup {
     queue: wgpu::Queue,
 }
 
-async fn setup<P: Playground>(title: &str) -> Setup {
+async fn setup<P: Playground>(window: Window, event_loop: EventLoop<()>) -> Setup {
     #[cfg(not(target_arch = "wasm32"))]
     {
         env_logger::init();
     };
-
-    let event_loop = EventLoop::new();
-    let mut builder = winit::window::WindowBuilder::new();
-    builder = builder.with_title(title);
-    #[cfg(windows_OFF)] // TODO
-    {
-        use winit::platform::windows::WindowBuilderExtWindows;
-        builder = builder.with_no_redirection_bitmap(true);
-    }
-    let window = builder.build(&event_loop).unwrap();
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -361,18 +355,17 @@ impl Spawner {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn run<E: Playground>(title: &str) {
-    let setup = pollster::block_on(setup::<E>(title));
+pub fn run<E: Playground>(window: Window, event_loop: EventLoop<()>) {
+    let setup = pollster::block_on(setup::<E>(window, event_loop));
     start::<E>(setup);
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn run<E: Playground>(title: &str) {
+pub fn run<E: Playground>(window: Window, event_loop: EventLoop<()>) {
     use wasm_bindgen::{prelude::*, JsCast};
 
-    let title = title.to_owned();
     wasm_bindgen_futures::spawn_local(async move {
-        let setup = setup::<E>(&title).await;
+        let setup = setup::<E>(window, event_loop).await;
         let start_closure = Closure::once_into_js(move || start::<E>(setup));
 
         // make sure to handle JS exceptions thrown inside start.
