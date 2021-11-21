@@ -2,7 +2,7 @@ use std::future::Future;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::{Duration, Instant};
 use winit::{
-    event::{self, WindowEvent},
+    event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
@@ -46,7 +46,11 @@ pub trait Playground: 'static + Sized {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     );
-    fn update(&mut self, event: WindowEvent);
+    fn update(&mut self, event: WindowEvent, control_flow: &mut ControlFlow) {
+        if let WindowEvent::CloseRequested = event {
+            *control_flow = ControlFlow::Exit;
+        }
+    }
     fn render(
         &mut self,
         view: &wgpu::TextureView,
@@ -67,11 +71,11 @@ struct Setup {
     queue: wgpu::Queue,
 }
 
-async fn setup<P: Playground>(window: Window, event_loop: EventLoop<()>) -> Setup {
+fn setup_logging(_window: &Window) {
     #[cfg(not(target_arch = "wasm32"))]
     {
         env_logger::init();
-    };
+    }
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -88,11 +92,15 @@ async fn setup<P: Playground>(window: Window, event_loop: EventLoop<()>) -> Setu
             .and_then(|win| win.document())
             .and_then(|doc| doc.body())
             .and_then(|body| {
-                body.append_child(&web_sys::Element::from(window.canvas()))
+                body.append_child(&web_sys::Element::from(_window.canvas()))
                     .ok()
             })
             .expect("couldn't append canvas to document body");
     }
+}
+
+async fn setup<P: Playground>(window: Window, event_loop: EventLoop<()>) -> Setup {
+    setup_logging(&window);
 
     log::info!("Initializing the surface...");
 
@@ -190,7 +198,7 @@ fn start<E: Playground>(
     surface.configure(&device, &config);
 
     log::info!("Initializing the example...");
-    let mut example = E::init(&config, &adapter, &device, &queue);
+    let mut playground = E::init(&config, &adapter, &device, &queue);
 
     #[cfg(not(target_arch = "wasm32"))]
     let mut last_update_inst = Instant::now();
@@ -208,77 +216,30 @@ fn start<E: Playground>(
             ControlFlow::Poll
         };
         match event {
-            event::Event::RedrawEventsCleared => {
-                #[cfg(not(target_arch = "wasm32"))]
-                {
-                    // Clamp to some max framerate to avoid busy-looping too much
-                    // (we might be in wgpu::PresentMode::Mailbox, thus discarding superfluous frames)
-                    //
-                    // winit has window.current_monitor().video_modes() but that is a list of all full screen video modes.
-                    // So without extra dependencies it's a bit tricky to get the max refresh rate we can run the window on.
-                    // Therefore we just go with 60fps - sorry 120hz+ folks!
-                    let target_frametime = Duration::from_secs_f64(1.0 / 60.0);
-                    let time_since_last_frame = last_update_inst.elapsed();
-                    if time_since_last_frame >= target_frametime {
-                        window.request_redraw();
-                        last_update_inst = Instant::now();
-                    } else {
-                        *control_flow = ControlFlow::WaitUntil(
-                            Instant::now() + target_frametime - time_since_last_frame,
-                        );
-                    }
-
-                    spawner.run_until_stalled();
-                }
-
-                #[cfg(target_arch = "wasm32")]
-                window.request_redraw();
-            }
-            event::Event::WindowEvent {
-                event:
+            Event::NewEvents(_start_cause) => (),
+            Event::WindowEvent { event, .. } => {
+                match event {
                     WindowEvent::Resized(size)
                     | WindowEvent::ScaleFactorChanged {
                         new_inner_size: &mut size,
                         ..
-                    },
-                ..
-            } => {
-                log::info!("Resizing to {:?}", size);
-                config.width = size.width.max(1);
-                config.height = size.height.max(1);
-                example.resize(&config, &device, &queue);
-                surface.configure(&device, &config);
+                    } => {
+                        log::info!("Resizing to {:?}", size);
+                        config.width = size.width.max(1);
+                        config.height = size.height.max(1);
+                        playground.resize(&config, &device, &queue);
+                        surface.configure(&device, &config);
+                    }
+                    _ => (),
+                }
+                playground.update(event, control_flow);
             }
-            event::Event::WindowEvent { event, .. } => match event {
-                WindowEvent::KeyboardInput {
-                    input:
-                        event::KeyboardInput {
-                            virtual_keycode: Some(event::VirtualKeyCode::Escape),
-                            state: event::ElementState::Pressed,
-                            ..
-                        },
-                    ..
-                }
-                | WindowEvent::CloseRequested => {
-                    *control_flow = ControlFlow::Exit;
-                }
-                #[cfg(not(target_arch = "wasm32"))]
-                WindowEvent::KeyboardInput {
-                    input:
-                        event::KeyboardInput {
-                            virtual_keycode: Some(event::VirtualKeyCode::R),
-                            state: event::ElementState::Pressed,
-                            ..
-                        },
-                    ..
-                } => {
-                    println!("{:#?}", instance.generate_report());
-                }
-                _ => {
-                    example.update(event);
-                }
-            },
-            event::Event::RedrawRequested(_) => {
+            Event::DeviceEvent { .. } => (),
+            Event::UserEvent(_event) => (),
+            Event::Suspended => (),
+            Event::Resumed => (),
+            Event::MainEventsCleared => (),
+            Event::RedrawRequested(_) => {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     accum_time += last_frame_inst.elapsed().as_secs_f32();
@@ -307,11 +268,38 @@ fn start<E: Playground>(
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
-                example.render(&view, &device, &queue, &spawner);
+                playground.render(&view, &device, &queue, &spawner);
 
                 frame.present();
             }
-            _ => {}
+            Event::RedrawEventsCleared => {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    // Clamp to some max framerate to avoid busy-looping too much
+                    // (we might be in wgpu::PresentMode::Mailbox, thus discarding superfluous frames)
+                    //
+                    // winit has window.current_monitor().video_modes() but that is a list of all full screen video modes.
+                    // So without extra dependencies it's a bit tricky to get the max refresh rate we can run the window on.
+                    // Therefore we just go with 60fps - sorry 120hz+ folks!
+                    let target_frametime = Duration::from_secs_f64(1.0 / 60.0);
+                    let time_since_last_frame = last_update_inst.elapsed();
+                    if time_since_last_frame >= target_frametime {
+                        window.request_redraw();
+                        last_update_inst = Instant::now();
+                    } else {
+                        *control_flow = ControlFlow::WaitUntil(
+                            Instant::now() + target_frametime - time_since_last_frame,
+                        );
+                    }
+
+                    spawner.run_until_stalled();
+                }
+
+                #[cfg(target_arch = "wasm32")]
+                window.request_redraw();
+            }
+
+            Event::LoopDestroyed => (),
         }
     });
 }
