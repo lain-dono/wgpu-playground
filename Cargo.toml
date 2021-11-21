@@ -5,6 +5,11 @@ authors = ["wgpu developers"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
 
+description = "Playground for wgpu-rs"
+homepage = "https://github.com/lain-dono/wgpu-playground"
+repository = "https://github.com/lain-dono/wgpu-playground"
+keywords = ["graphics"]
+
 [dependencies]
 wgpu = "0.11"
 winit = "0.25"
