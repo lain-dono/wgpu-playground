@@ -282,14 +282,14 @@ fn start<E: Playground>(
                     // So without extra dependencies it's a bit tricky to get the max refresh rate we can run the window on.
                     // Therefore we just go with 60fps - sorry 120hz+ folks!
                     let target_frametime = Duration::from_secs_f64(1.0 / 60.0);
-                    let time_since_last_frame = last_update_inst.elapsed();
+                    let now = Instant::now();
+                    let time_since_last_frame = now.duration_since(last_update_inst);
                     if time_since_last_frame >= target_frametime {
                         window.request_redraw();
-                        last_update_inst = Instant::now();
+                        last_update_inst = now;
                     } else {
-                        *control_flow = ControlFlow::WaitUntil(
-                            Instant::now() + target_frametime - time_since_last_frame,
-                        );
+                        *control_flow =
+                            ControlFlow::WaitUntil(now + target_frametime - time_since_last_frame);
                     }
 
                     spawner.run_until_stalled();
