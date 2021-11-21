@@ -9,6 +9,10 @@ description = "Playground for wgpu-rs"
 homepage = "https://github.com/lain-dono/wgpu-playground"
 repository = "https://github.com/lain-dono/wgpu-playground"
 keywords = ["graphics"]
+exclude = [
+    "Cargo.lock",
+    "target/**/*"
+]
 
 [dependencies]
 wgpu = "0.11"
