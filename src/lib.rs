@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::future::Future;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::{Duration, Instant};
