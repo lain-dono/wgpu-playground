@@ -21,7 +21,14 @@ pub trait Playground: 'static + Sized {
         }
     }
     fn required_limits() -> wgpu::Limits {
-        wgpu::Limits::downlevel_webgl2_defaults() // These downlevel limits will allow the code to run on all possible hardware
+        #[cfg(target_arch = "wasm32")]
+        {
+            wgpu::Limits::downlevel_webgl2_defaults() // These downlevel limits will allow the code to run on all possible hardware
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            wgpu::Limits::downlevel_defaults()
+        }
     }
     fn init(
         config: &wgpu::SurfaceConfiguration,
