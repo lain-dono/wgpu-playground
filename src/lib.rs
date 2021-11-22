@@ -12,6 +12,8 @@ use winit::{
 pub use wgpu;
 pub use winit;
 
+pub mod projection;
+
 pub trait Playground: 'static + Sized {
     fn optional_features() -> wgpu::Features {
         wgpu::Features::empty()
