@@ -4,7 +4,7 @@ use std::future::Future;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::{Duration, Instant};
 use winit::{
-    event::{Event, WindowEvent},
+    event::{DeviceEvent, DeviceId, Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
@@ -44,6 +44,8 @@ pub trait Playground: 'static + Sized {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Self;
+
+    fn event(&mut self, _device_id: DeviceId, _event: DeviceEvent) {}
     fn resize(
         &mut self,
         config: &wgpu::SurfaceConfiguration,
@@ -238,7 +240,7 @@ fn start<E: Playground>(
                 }
                 playground.update(event, control_flow);
             }
-            Event::DeviceEvent { .. } => (),
+            Event::DeviceEvent { device_id, event } => playground.event(device_id, event),
             Event::UserEvent(_event) => (),
             Event::Suspended => (),
             Event::Resumed => (),
